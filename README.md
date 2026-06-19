@@ -1,0 +1,1 @@
+# EDA2-2026.1-AnaliseDeSentimento-Grupo08
