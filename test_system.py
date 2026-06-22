@@ -41,7 +41,7 @@ class TestDataStructures(unittest.TestCase):
         self.assertEqual(len(ll), 0)
         self.assertIsNone(ll.head)
         self.assertIsNone(ll.tail)
-        
+
     def test_hash_table_operations(self):
         ht = HashTable(capacity=4)  # Small capacity to trigger resizing
         ht.put("apple", 1)
@@ -72,3 +72,42 @@ class TestDataStructures(unittest.TestCase):
         
         # Delete non-existent
         self.assertFalse(ht.delete("banana"))
+
+    def test_graph_add_and_remove(self):
+        g = Graph()
+        v1 = Vertex("1", "positive", ["happy", "victory"])
+        v2 = Vertex("2", "negative", ["sad", "defeat"])
+        v3 = Vertex("3", "neutral", ["match", "kickoff"])
+        
+        g.add_vertex(v1)
+        g.add_vertex(v2)
+        g.add_vertex(v3)
+        
+        self.assertEqual(g.get_vertex("1"), v1)
+        self.assertEqual(g.get_vertex("2"), v2)
+        
+        g.add_edge("1", "2", 5)
+        g.add_edge("2", "3", 3)
+        
+        # Verify edge exists bidirectionally
+        # Vertex 1 neighbor should be Vertex 2 with weight 5
+        v1_neighbors = list(v1.neighbors)
+        self.assertEqual(len(v1_neighbors), 1)
+        self.assertEqual(v1_neighbors[0].key, "2")
+        self.assertEqual(v1_neighbors[0].value, 5)
+        
+        # Vertex 2 should have neighbor 1 (weight 5) and 3 (weight 3)
+        v2_neighbors = list(v2.neighbors)
+        self.assertEqual(len(v2_neighbors), 2)
+        v2_neighbor_keys = [node.key for node in v2_neighbors]
+        self.assertIn("1", v2_neighbor_keys)
+        self.assertIn("3", v2_neighbor_keys)
+        
+        # Remove Vertex 2
+        g.remove_vertex("2")
+        self.assertIsNone(g.get_vertex("2"))
+        
+        # Vertex 1 should no longer list Vertex 2 as neighbor
+        self.assertEqual(len(list(v1.neighbors)), 0)
+        # Vertex 3 should no longer list Vertex 2 as neighbor
+        self.assertEqual(len(list(v3.neighbors)), 0)
