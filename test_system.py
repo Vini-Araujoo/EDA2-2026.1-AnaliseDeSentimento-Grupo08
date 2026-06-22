@@ -111,3 +111,22 @@ class TestDataStructures(unittest.TestCase):
         self.assertEqual(len(list(v1.neighbors)), 0)
         # Vertex 3 should no longer list Vertex 2 as neighbor
         self.assertEqual(len(list(v3.neighbors)), 0)
+
+class TestPreprocessing(unittest.TestCase):
+    def test_preprocess_tweet(self):
+        tweet = "The players are playing beautifully! It is a great victory, but I'm tired."
+        words = preprocess_tweet(tweet)
+        
+        # "playing" -> "play"
+        # "victory" -> "victory"
+        # Stopwords "the", "are", "beautifully" (beautifully might be stopword or not, but let's check basic ones)
+        # "is", "a", "but", "I'm", "tired"
+        # Punctuation "!." removed
+        self.assertIn("play", words)
+        self.assertIn("victory", words)
+        self.assertNotIn("are", words)
+        self.assertNotIn("is", words)
+        
+        # Confirm lowercase conversion
+        for w in words:
+            self.assertEqual(w, w.lower())
