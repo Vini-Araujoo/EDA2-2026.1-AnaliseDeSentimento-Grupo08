@@ -41,3 +41,34 @@ class TestDataStructures(unittest.TestCase):
         self.assertEqual(len(ll), 0)
         self.assertIsNone(ll.head)
         self.assertIsNone(ll.tail)
+        
+    def test_hash_table_operations(self):
+        ht = HashTable(capacity=4)  # Small capacity to trigger resizing
+        ht.put("apple", 1)
+        ht.put("banana", 2)
+        ht.put("cherry", 3)
+        
+        self.assertEqual(ht.get("apple"), 1)
+        self.assertEqual(ht.get("banana"), 2)
+        self.assertEqual(ht.get("cherry"), 3)
+        self.assertTrue(ht.contains("banana"))
+        self.assertFalse(ht.contains("dragonfruit"))
+        
+        # Resizing check
+        ht.put("date", 4)  # 4 elements in capacity 4 -> load factor 1.0 > 0.75 -> resizing triggers
+        self.assertEqual(ht.capacity, 8)
+        self.assertEqual(ht.get("apple"), 1)
+        self.assertEqual(ht.get("date"), 4)
+        
+        # Overwrite value
+        ht.put("apple", 10)
+        self.assertEqual(ht.get("apple"), 10)
+        
+        # Delete value
+        self.assertTrue(ht.delete("banana"))
+        self.assertIsNone(ht.get("banana"))
+        self.assertFalse(ht.contains("banana"))
+        self.assertEqual(ht.size, 3)
+        
+        # Delete non-existent
+        self.assertFalse(ht.delete("banana"))
