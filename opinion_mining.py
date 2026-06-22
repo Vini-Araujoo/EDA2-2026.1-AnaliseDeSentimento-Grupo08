@@ -83,3 +83,102 @@ def build_base_graph(tweets_data, threshold=1):
                 graph.add_edge(tweet_id, cand_id, count)
                 
     return graph, inverted_index
+
+def classify_tweet(graph, inverted_index, text, threshold=1):
+    """
+    Classifies a new tweet into positive, negative, or neutral sentiment.
+    
+    Parameters:
+    - graph: Base Graph containing the immutable dataset.
+    - inverted_index: Inverted index mapping words to tweet IDs.
+    - text: raw text of the new tweet.
+    - threshold: minimum number of shared words to connect the new tweet to base tweets.
+    
+    Returns:
+    - str: 'positive', 'negative', or 'neutral' (default on tie or no matches).
+    """
+    raw_words = preprocess_tweet(text)
+    
+    corpus_stopwords = getattr(graph, 'corpus_stopwords', {})
+    useful_words = [w for w in raw_words if w not in corpus_stopwords]
+    
+    if not useful_words:
+        return "neutral"
+        
+    new_tweet_id = "__temp_query_tweet__"
+    candidate_counts = {}
+    for word in useful_words:
+        postings = inverted_index.get(word)
+        if postings:
+            for node in postings:
+                cand_id = node.key
+                candidate_counts[cand_id] = candidate_counts.get(cand_id, 0) + 1
+
+    temp_vertex = Vertex(new_tweet_id, "unknown", useful_words)
+    graph.add_vertex(temp_vertex)
+    
+    has_edges = False
+    for cand_id, intersection in candidate_counts.items():
+        if intersection >= threshold:
+            graph.add_edge(new_tweet_id, cand_id, intersection)
+            has_edges = True
+            
+    if not has_edges:
+        graph.remove_vertex(new_tweet_id)
+        return "neutral"
+    
+    scores = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
+    
+    L1 = []
+    L1_ids = {}
+    for node in temp_vertex.neighbors:
+        neighbor_id = node.key
+        weight = node.value
+        neighbor_vertex = graph.get_vertex(neighbor_id)
+        if neighbor_vertex:
+            L1.append((neighbor_vertex, weight))
+            L1_ids[neighbor_id] = True
+            
+    for neighbor_vertex, weight in L1:
+        sentiment = neighbor_vertex.sentiment.lower()
+        if sentiment in scores:
+            scores[sentiment] += weight
+            
+    for neighbor_vertex, w1 in L1:
+        deg = len(neighbor_vertex.neighbors)
+        if deg == 0:
+            deg = 1
+        for node in neighbor_vertex.neighbors:
+            l2_id = node.key
+            l2_weight = node.value
+            
+            if l2_id == new_tweet_id or l2_id in L1_ids:
+                continue
+                
+            l2_vertex = graph.get_vertex(l2_id)
+            if l2_vertex:
+                sentiment = l2_vertex.sentiment.lower()
+                if sentiment in scores:
+                    scores[sentiment] += (0.5 * w1 * l2_weight) / deg
+
+    winning_sentiment = "neutral"
+    max_score = -1.0
+    is_tie = False
+    
+    for sentiment, score in scores.items():
+        if score > max_score:
+            max_score = score
+            winning_sentiment = sentiment
+            is_tie = False
+        elif score == max_score:
+            is_tie = True
+            
+    if is_tie:
+        final_sentiment = "neutral"
+    else:
+        final_sentiment = winning_sentiment
+        
+    graph.remove_vertex(new_tweet_id)
+    
+    return final_sentiment
+
