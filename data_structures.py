@@ -135,3 +135,12 @@ class HashTable:
                 for node in bucket:
                     all_keys.append(node.key)
         return all_keys
+
+
+class Vertex:
+    """A vertex in the Base Graph representing a tweet."""
+    def __init__(self, tweet_id, sentiment, useful_words):
+        self.id = tweet_id
+        self.sentiment = sentiment
+        self.useful_words = useful_words
+        self.neighbors = LinkedList() 
