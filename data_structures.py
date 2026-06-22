@@ -53,3 +53,33 @@ class LinkedList:
     def __len__(self):
         return self.size
 
+
+class HashTable:
+    """A custom Hash Table with chaining collision resolution and dynamic resizing."""
+    def __init__(self, capacity=1000):
+        self.capacity = capacity
+        self.size = 0
+        self.buckets = [None] * capacity
+
+    def _hash(self, key):
+        """Compute the bucket index for a key."""
+        return abs(hash(key)) % self.capacity
+
+    def put(self, key, value):
+        """Insert or update a key-value pair. Resizes if load factor exceeds 0.75."""
+        idx = self._hash(key)
+        if self.buckets[idx] is None:
+            self.buckets[idx] = LinkedList()
+
+        # Check if the key already exists and update it
+        for node in self.buckets[idx]:
+            if node.key == key:
+                node.value = value
+                return
+
+        self.buckets[idx].append(key, value)
+        self.size += 1
+
+        # Resize if load factor is > 0.75
+        if self.size / self.capacity > 0.75:
+            self._resize()
