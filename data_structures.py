@@ -22,3 +22,34 @@ class LinkedList:
             self.tail.next = new_node
             self.tail = new_node
         self.size += 1
+
+    def remove(self, key):
+        """Remove the first node containing the specified key. Returns True if removed, else False."""
+        curr = self.head
+        prev = None
+        while curr:
+            if curr.key == key:
+                if prev is None:
+                    self.head = curr.next
+                    if self.head is None:
+                        self.tail = None
+                else:
+                    prev.next = curr.next
+                    if curr.next is None:
+                        self.tail = prev
+                self.size -= 1
+                return True
+            prev = curr
+            curr = curr.next
+        return False
+
+    def __iter__(self):
+        """Iterate over the nodes of the list."""
+        curr = self.head
+        while curr:
+            yield curr
+            curr = curr.next
+
+    def __len__(self):
+        return self.size
+
