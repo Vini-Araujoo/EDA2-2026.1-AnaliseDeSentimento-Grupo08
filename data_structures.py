@@ -143,4 +143,33 @@ class Vertex:
         self.id = tweet_id
         self.sentiment = sentiment
         self.useful_words = useful_words
-        self.neighbors = LinkedList() 
+        self.neighbors = LinkedList()
+
+class Graph:
+    """An undirected Graph implemented from scratch, using the custom HashTable for vertices."""
+    def __init__(self):
+        self.vertices = HashTable(capacity=1000)
+
+    def add_vertex(self, vertex):
+        """Add a Vertex to the graph."""
+        self.vertices.put(vertex.id, vertex)
+
+    def get_vertex(self, tweet_id):
+        """Retrieve a Vertex by its ID."""
+        return self.vertices.get(tweet_id)
+
+    def add_edge(self, id1, id2, weight):
+        """Add or update an undirected edge between two vertices."""
+        v1 = self.get_vertex(id1)
+        v2 = self.get_vertex(id2)
+        if v1 and v2:
+            self._add_directed_edge(v1, id2, weight)
+            self._add_directed_edge(v2, id1, weight)
+
+    def _add_directed_edge(self, v_from, to_id, weight):
+        """Internal helper to add a directed edge from a vertex to a target ID."""
+        for node in v_from.neighbors:
+            if node.key == to_id:
+                node.value = weight
+                return
+        v_from.neighbors.append(to_id, weight)
