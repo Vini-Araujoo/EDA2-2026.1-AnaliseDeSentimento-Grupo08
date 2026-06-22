@@ -130,3 +130,55 @@ class TestPreprocessing(unittest.TestCase):
         # Confirm lowercase conversion
         for w in words:
             self.assertEqual(w, w.lower())
+
+class TestSentimentSystem(unittest.TestCase):
+    def setUp(self):
+        # Create a small mock dataset
+        self.mock_data = [
+            {"id": "t1", "tweet": "I love the World Cup, it is fantastic and beautiful!", "sentiment": "positive"},
+            {"id": "t2", "tweet": "Incredible win by the team! Love the plays and happy feelings.", "sentiment": "positive"},
+            {"id": "t3", "tweet": "This match was so boring and awful. Terrible performance.", "sentiment": "negative"},
+            {"id": "t4", "tweet": "I hate this referee, he is absolutely bad and worst.", "sentiment": "negative"},
+            {"id": "t5", "tweet": "The kickoff start time is scheduled for 6 PM today.", "sentiment": "neutral"},
+            {"id": "t6", "tweet": "The group stage draw result is out for the tournament.", "sentiment": "neutral"},
+        ]
+        self.graph, self.inverted_index = build_base_graph(self.mock_data, threshold=1)
+
+    def test_base_graph_size(self):
+        # We should have 6 vertices in the graph
+        self.assertEqual(self.graph.vertices.size, 6)
+
+    def test_classify_positive(self):
+        # Test a positive tweet
+        new_tweet = "I am so happy and love this game, it is fantastic!"
+        predicted = classify_tweet(self.graph, self.inverted_index, new_tweet, threshold=1)
+        self.assertEqual(predicted, "positive")
+        
+        # Ensure temporary vertex was cleaned up
+        self.assertIsNone(self.graph.get_vertex("__temp_query_tweet__"))
+
+    def test_classify_negative(self):
+        # Test a negative tweet
+        new_tweet = "Awful referee and terrible worst match, I hate it."
+        predicted = classify_tweet(self.graph, self.inverted_index, new_tweet, threshold=1)
+        self.assertEqual(predicted, "negative")
+        
+        # Ensure temporary vertex was cleaned up
+        self.assertIsNone(self.graph.get_vertex("__temp_query_tweet__"))
+
+    def test_classify_neutral(self):
+        # Test a neutral tweet
+        new_tweet = "What is the schedule and match kick-off time tomorrow?"
+        predicted = classify_tweet(self.graph, self.inverted_index, new_tweet, threshold=1)
+        self.assertEqual(predicted, "neutral")
+
+    def test_tie_breaks_to_neutral(self):
+        # A tweet that has one positive word and one negative word in common with the base graph
+        # Love (positive) + Terrible (negative)
+        new_tweet = "I love this, but it is terrible performance."
+        predicted = classify_tweet(self.graph, self.inverted_index, new_tweet, threshold=1)
+        self.assertEqual(predicted, "neutral")
+
+
+if __name__ == "__main__":
+    unittest.main()
