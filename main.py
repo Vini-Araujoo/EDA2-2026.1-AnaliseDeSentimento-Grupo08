@@ -1,6 +1,6 @@
 import csv
-import sys
 import time
+import sys
 from opinion_mining import build_base_graph, classify_tweet, preprocess_tweet
 from data_structures import Vertex
 
@@ -265,3 +265,81 @@ def interactive_trace(graph, inverted_index, text, threshold=1):
     # Cleanup
     graph.remove_vertex(temp_id)
     print("-"*60 + "\n")
+
+
+def main():
+    csv_file = 'fifa_world_cup_2022_tweets.csv'
+    
+    # Check if a sentence was passed via command line arguments
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ('-h', '--help'):
+            print("Usage:")
+            print("  python main.py                    # Runs the interactive menu")
+            print("  python main.py \"your tweet text\" # Directly runs a detailed classification trace")
+            return
+            
+        tweet_text = " ".join(sys.argv[1:])
+        tweets = load_dataset(csv_file, limit=5000)
+        print("\n[*] Building base graph of 5000 tweets for query classification...")
+        start_time = time.time()
+        graph, inverted_index = build_base_graph(tweets, threshold=1)
+        print(f"[+] Graph built in {time.time() - start_time:.2f} seconds.")
+        
+        interactive_trace(graph, inverted_index, tweet_text, threshold=1)
+        return
+
+    # Build a small initial graph for interactive use
+    tweets = load_dataset(csv_file, limit=10000)
+    
+    print("\nOptions:")
+    print("1. Run Full System Evaluation (Train size: 4000, Test size: 1000)")
+    print("2. Run Interactive Mode (Input your own tweets)")
+    print("3. Exit")
+    
+    try:
+        choice = input("\nEnter choice (1-3): ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print("\nExiting.")
+        return
+
+    if choice == '1':
+        try:
+            thresh_str = input("Enter similarity threshold (default: 1): ").strip()
+            threshold = int(thresh_str) if thresh_str else 1
+        except ValueError:
+            print("[!] Invalid input. Using default threshold 1.")
+            threshold = 1
+        
+        run_evaluation(tweets, train_size=4000, test_size=1000, threshold=threshold)
+        
+    elif choice == '2':
+        # For interactive mode, we will build a base graph of 5000 tweets to query against
+        print("\n[*] Building base graph of 5000 tweets for interactive queries...")
+        start_time = time.time()
+        graph, inverted_index = build_base_graph(tweets[:5000], threshold=1)
+        print(f"[+] Graph built in {time.time() - start_time:.2f} seconds.")
+        
+        try:
+            thresh_str = input("Enter query similarity threshold (default: 1): ").strip()
+            threshold = int(thresh_str) if thresh_str else 1
+        except ValueError:
+            print("[!] Invalid input. Using default threshold 1.")
+            threshold = 1
+            
+        print("\nEntering interactive mode. Type 'exit' or press Ctrl+C to stop.")
+        while True:
+            try:
+                tweet_text = input("\nEnter tweet text to classify: ").strip()
+                if not tweet_text:
+                    continue
+                if tweet_text.lower() == 'exit':
+                    break
+                interactive_trace(graph, inverted_index, tweet_text, threshold=threshold)
+            except (KeyboardInterrupt, EOFError):
+                print("\nExiting interactive mode.")
+                break
+    else:
+        print("Exiting.")
+
+if __name__ == '__main__':
+    main()
