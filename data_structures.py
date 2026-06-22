@@ -173,3 +173,20 @@ class Graph:
                 node.value = weight
                 return
         v_from.neighbors.append(to_id, weight)
+
+
+    def remove_vertex(self, tweet_id):
+        """Remove a vertex and all its corresponding edges from the graph."""
+        v = self.get_vertex(tweet_id)
+        if not v:
+            return False
+
+        # Remove reference from all its neighbors' adjacency lists
+        for node in v.neighbors:
+            neighbor_id = node.key
+            neighbor_vertex = self.get_vertex(neighbor_id)
+            if neighbor_vertex:
+                neighbor_vertex.neighbors.remove(tweet_id)
+
+        # Delete from the vertices hash table
+        return self.vertices.delete(tweet_id)
