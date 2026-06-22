@@ -4,15 +4,14 @@ import sys
 from opinion_mining import build_base_graph, classify_tweet, preprocess_tweet
 from data_structures import Vertex
 
-def load_dataset(file_path, limit=6000):
-    """
-    Loads tweets from the CSV file.
-    
-    Returns:
-    - list of dicts, each with keys 'id', 'tweet', 'sentiment'
-    """
+# ------------------------------------------------------------------ #
+# Função load_dataset                                                 #
+# Carrega tweets do arquivo CSV.                                      #
+# Retorna lista de dicts com chaves 'id', 'tweet', 'sentiment'.      #
+# ------------------------------------------------------------------ #
+def load_dataset(file_path, limit=10000):
     tweets = []
-    print(f"[*] Loading raw dataset from {file_path}...")
+    print(f"[*] Carregando dataset de {file_path}...")
     try:
         with open(file_path, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
@@ -25,20 +24,25 @@ def load_dataset(file_path, limit=6000):
                     'sentiment': row['Sentiment'].lower().strip()
                 })
     except FileNotFoundError:
-        print(f"[!] Error: {file_path} not found. Please place it in the same directory.")
+        print(f"[!] Erro: {file_path} não encontrado. Coloque-o no mesmo diretório.")
         sys.exit(1)
-    print(f"[+] Loaded {len(tweets)} tweets.")
+    print(f"[+] {len(tweets)} tweets carregados.")
     return tweets
 
 
+# ------------------------------------------------------------------ #
+# Função calculate_metrics                                            #
+# Calcula métricas de classificação do zero:                         #
+# Acurácia, Precisão, Recall e F1-Score por classe.                  #
+# ------------------------------------------------------------------ #
 def calculate_metrics(y_true, y_pred):
-    """
-    Calculates classification metrics (Accuracy, Precision, Recall, F1-Score) from scratch.
-    """
     classes = ['positive', 'negative', 'neutral']
     metrics = {}
     
-    # Calculate overall accuracy
+    # ------------------------------------------------------------------ #
+    # Calcula a acurácia geral                                            #
+    # acurácia = acertos / total                                          #
+    # ------------------------------------------------------------------ #
     correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
     total = len(y_true)
     accuracy = correct / total if total > 0 else 0
@@ -70,40 +74,48 @@ def calculate_metrics(y_true, y_pred):
     return accuracy, metrics
 
 
+# ------------------------------------------------------------------ #
+# Função correct_count                                                #
+# Conta o número de predições corretas.                              #
+# ------------------------------------------------------------------ #
 def correct_count(y_true, y_pred):
     return sum(1 for t, p in zip(y_true, y_pred) if t == p)
 
 
-def run_evaluation(tweets, train_size=4000, test_size=1000, threshold=1):
-    """
-    Splits the dataset, builds the Base Graph, and evaluates performance on a test set.
-    """
+# ------------------------------------------------------------------ #
+# Função run_evaluation                                               #
+# Divide o dataset, constrói o Grafo Base e avalia a performance     #
+# no conjunto de teste.                                               #
+# ------------------------------------------------------------------ #
+def run_evaluation(tweets, train_size=8000, test_size=2000, threshold=0.05):
     if len(tweets) < (train_size + test_size):
-        print(f"[!] Warning: Dataset size ({len(tweets)}) is less than requested split size ({train_size + test_size}). Adjusting sizes.")
+        print(f"[!] Aviso: Tamanho do dataset ({len(tweets)}) menor que o split solicitado ({train_size + test_size}). Ajustando tamanhos.")
         train_size = int(len(tweets) * 0.8)
         test_size = len(tweets) - train_size
 
     train_data = tweets[:train_size]
     test_data = tweets[train_size:train_size + test_size]
 
-    print(f"\n[*] Building Base Graph with {train_size} tweets (threshold={threshold})...")
+    print(f"\n[*] Construindo Grafo Base com {train_size} tweets (threshold={threshold})...")
     start_time = time.time()
     graph, inverted_index = build_base_graph(train_data, threshold=threshold)
     build_time = time.time() - start_time
-    print(f"[+] Graph built in {build_time:.2f} seconds.")
+    print(f"[+] Grafo construído em {build_time:.2f} segundos.")
     
-    # Count total edges in base graph
+    # ------------------------------------------------------------------ #
+    # Conta o total de arestas no grafo base                              #
+    # Como o grafo é não-direcionado, cada aresta é contada duas vezes   #
+    # ------------------------------------------------------------------ #
     total_edges = 0
     all_ids = graph.vertices.keys()
     for tweet_id in all_ids:
         v = graph.get_vertex(tweet_id)
         if v:
             total_edges += len(v.neighbors)
-    # Since undirected, each edge is counted twice
     total_edges //= 2
-    print(f"[+] Total vertices: {graph.vertices.size}, Total edges: {total_edges}")
+    print(f"[+] Total de vértices: {graph.vertices.size}, Total de arestas: {total_edges}")
 
-    print(f"\n[*] Evaluating on {test_size} test tweets...")
+    print(f"\n[*] Avaliando em {test_size} tweets de teste...")
     y_true = []
     y_pred = []
     
@@ -113,156 +125,190 @@ def run_evaluation(tweets, train_size=4000, test_size=1000, threshold=1):
         pred = classify_tweet(graph, inverted_index, item['tweet'], threshold=threshold)
         y_pred.append(pred)
         if (idx + 1) % 200 == 0:
-            print(f"    Processed {idx + 1}/{test_size}...")
+            print(f"    Processados {idx + 1}/{test_size}...")
             
     eval_time = time.time() - start_time
     avg_speed = test_size / eval_time if eval_time > 0 else 0
-    print(f"[+] Evaluation finished in {eval_time:.2f} seconds ({avg_speed:.1f} tweets/sec).")
+    print(f"[+] Avaliação finalizada em {eval_time:.2f} segundos ({avg_speed:.1f} tweets/seg).")
 
     accuracy, metrics = calculate_metrics(y_true, y_pred)
     
     print("\n" + "="*50)
-    print(f" EVALUATION REPORT (threshold={threshold})")
+    print(f" RELATÓRIO DE AVALIAÇÃO (threshold={threshold})")
     print("="*50)
-    print(f"Overall Accuracy: {accuracy:.4f} ({correct_count(y_true, y_pred)}/{len(y_true)})")
+    print(f"Acurácia Geral: {accuracy:.4f} ({correct_count(y_true, y_pred)}/{len(y_true)})")
     print("-"*50)
-    print(f"{'Sentiment':<12} | {'Precision':<10} | {'Recall':<10} | {'F1-Score':<10} | {'Support':<8}")
+    print(f"{'Sentimento':<12} | {'Precisão':<10} | {'Recall':<10} | {'F1-Score':<10} | {'Suporte':<8}")
     print("-"*50)
     for cls, scores in metrics.items():
         print(f"{cls:<12} | {scores['precision']:<10.4f} | {scores['recall']:<10.4f} | {scores['f1-score']:<10.4f} | {scores['support']:<8}")
     print("="*50 + "\n")
 
 
-def interactive_trace(graph, inverted_index, text, threshold=1):
-    """
-    Runs classification on a single input text and displays the trace details.
-    """
+# ------------------------------------------------------------------ #
+# Função interactive_trace                                            #
+# Executa a classificação em um texto e exibe os detalhes do trace.  #
+# Mostra scores Jaccard-IDF e uso do prior de classe.                #
+# ------------------------------------------------------------------ #
+def interactive_trace(graph, inverted_index, text, threshold=0.05):
+    import math
     print("\n" + "-"*60)
-    print(" INTERACTIVE CLASSIFICATION TRACE")
+    print(" TRACE DE CLASSIFICAÇÃO INTERATIVA")
     print("-"*60)
-    
-    print(f"Input text: \"{text}\"")
-    
-    # Preprocessing
+
+    print(f"Texto de entrada: \"{text}\"")
+
+    # ------------------------------------------------------------------ #
+    # Pré-processamento do texto de entrada                               #
+    # ------------------------------------------------------------------ #
     raw_words = preprocess_tweet(text)
     corpus_stopwords = getattr(graph, 'corpus_stopwords', {})
+    idf_table = getattr(graph, 'idf_table', {})
+    class_prior = getattr(graph, 'class_prior',
+                          {'positive': 0.333, 'negative': 0.333, 'neutral': 0.334})
+
     words = [w for w in raw_words if w not in corpus_stopwords]
-    print(f"Extracted Useful Words: {words}")
-    
+    print(f"Palavras Úteis Extraídas: {words}")
+
     if not words:
-        print("[!] No useful words found (filtered as stopwords/punctuation).")
-        print("Final Classification: NEUTRAL (default)")
+        fallback = max(class_prior, key=class_prior.get)
+        print("[!] Nenhuma palavra útil encontrada (filtradas como stopwords/pontuação).")
+        print(f"[Prior] Distribuição de classes: { {s: f'{p:.3f}' for s, p in class_prior.items()} }")
+        print(f"Classificação Final: {fallback.upper()} (fallback por prior de classe)")
         print("-"*60 + "\n")
         return
 
-    # Candidate Search
-    print("\n[Step 1] Querying Inverted Index...")
-    candidate_counts = {}
-    for word in words:
+    query_set = frozenset(words)
+
+    # ------------------------------------------------------------------ #
+    # Passo 1: Consultar o Índice Invertido                               #
+    # Busca quais tweets do grafo base contêm as palavras da query       #
+    # ------------------------------------------------------------------ #
+    print("\n[Passo 1] Consultando Índice Invertido...")
+    candidate_set = set()
+    for word in query_set:
         postings = inverted_index.get(word)
         if postings:
             posting_ids = [node.key for node in postings]
-            print(f"  Word '{word}' appears in: {posting_ids[:10]}... (Total: {len(posting_ids)})")
+            print(f"  Palavra '{word}' (IDF={idf_table.get(word, 1.0):.3f}) encontrada em {len(posting_ids)} tweets")
             for node in postings:
-                cand_id = node.key
-                candidate_counts[cand_id] = candidate_counts.get(cand_id, 0) + 1
+                candidate_set.add(node.key)
         else:
-            print(f"  Word '{word}' not found in index.")
+            print(f"  Palavra '{word}' não encontrada no índice.")
 
-    # Edge creation
-    print("\n[Step 2] Calculating Intersection Weights (Threshold >= {})...".format(threshold))
+    # ------------------------------------------------------------------ #
+    # Passo 2: Calcular similaridade Jaccard ponderada por IDF           #
+    # Cria arestas temporárias entre a query e candidatos acima do limiar #
+    # ------------------------------------------------------------------ #
+    print(f"\n[Passo 2] Calculando Jaccard-IDF (threshold >= {threshold})...")
     temp_id = "__temp_query_tweet__"
-    temp_vertex = Vertex(temp_id, "unknown", words)
+    temp_vertex = Vertex(temp_id, "unknown", list(words))
     graph.add_vertex(temp_vertex)
-    
+
     edges_added = []
-    for cand_id, intersection in candidate_counts.items():
-        if intersection >= threshold:
-            graph.add_edge(temp_id, cand_id, intersection)
-            cand_vertex = graph.get_vertex(cand_id)
-            edges_added.append((cand_id, cand_vertex.sentiment, cand_vertex.useful_words, intersection))
-            
+    for cand_id in candidate_set:
+        cand_vertex = graph.get_vertex(cand_id)
+        if not cand_vertex:
+            continue
+        words_b = frozenset(cand_vertex.useful_words)
+        intersection = query_set & words_b
+        if not intersection:
+            continue
+        union = query_set | words_b
+        idf_num = sum(idf_table.get(w, 1.0) for w in intersection)
+        idf_den = sum(idf_table.get(w, 1.0) for w in union)
+        jaccard_idf = idf_num / idf_den if idf_den > 0 else 0.0
+        if jaccard_idf >= threshold:
+            graph.add_edge(temp_id, cand_id, jaccard_idf)
+            edges_added.append((cand_id, cand_vertex.sentiment, list(intersection), jaccard_idf))
+
     if not edges_added:
-        print("  [!] No candidates met the similarity threshold.")
-        print("Final Classification: NEUTRAL (default)")
+        fallback = max(class_prior, key=class_prior.get)
+        print("  [!] Nenhum candidato atingiu o limiar de similaridade.")
+        print(f"[Prior] Distribuição de classes: { {s: f'{p:.3f}' for s, p in class_prior.items()} }")
+        print(f"Classificação Final: {fallback.upper()} (fallback por prior de classe)")
         graph.remove_vertex(temp_id)
         print("-"*60 + "\n")
         return
-        
-    print(f"  Connected to {len(edges_added)} direct neighbors in the Base Graph:")
-    for cid, sent, useful, wt in edges_added[:10]:
-        print(f"    - Base Tweet ID {cid} ({sent}, words: {useful}) -> Weight: {wt}")
-    if len(edges_added) > 10:
-        print(f"    - ... and {len(edges_added) - 10} more.")
 
-    # Level-2 BFS scores calculation
-    print("\n[Step 3] Propagating Scores (Level-2 BFS)...")
+    print(f"  Conectado a {len(edges_added)} vizinhos:")
+    for cid, sent, common, jac in sorted(edges_added, key=lambda x: -x[3])[:10]:
+        print(f"    - ID {cid} ({sent}) | compartilhadas={common} | Jaccard-IDF={jac:.4f}")
+    if len(edges_added) > 10:
+        print(f"    - ... e mais {len(edges_added) - 10}.")
+
+    # ------------------------------------------------------------------ #
+    # Passo 3: Propagação de scores (BFS Nível 2 com pesos normalizados) #
+    # L1: vizinhos diretos contribuem com peso Jaccard-IDF               #
+    # L2: vizinhos dos vizinhos com decaimento de 0.5                    #
+    # ------------------------------------------------------------------ #
+    print("\n[Passo 3] Propagando Scores (BFS Nível 2 com pesos normalizados)...")
     scores = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
-    
-    # Level 1 neighbors
+
     L1 = []
-    L1_ids = {}
-    print("  Level 1 Contributions (Direct Neighbors):")
+    L1_ids = set()
+    print("  Contribuições Nível 1 (Vizinhos Diretos):")
     for node in temp_vertex.neighbors:
         neighbor_id = node.key
         weight = node.value
         neighbor_vertex = graph.get_vertex(neighbor_id)
         if neighbor_vertex:
             L1.append((neighbor_vertex, weight))
-            L1_ids[neighbor_id] = True
+            L1_ids.add(neighbor_id)
             scores[neighbor_vertex.sentiment.lower()] += weight
-            print(f"    Neighbor ID {neighbor_id} ({neighbor_vertex.sentiment}) -> Added weight: {weight}")
+            print(f"    Vizinho ID {neighbor_id} ({neighbor_vertex.sentiment}) -> Jaccard-IDF: {weight:.4f}")
 
-    # Level 2 neighbors
-    print("\n  Level 2 Contributions (Neighbors of Neighbors, 0.5x penalty):")
+    max_l1_weight = max((w for _, w in L1), default=1.0) or 1.0
+
+    print("\n  Contribuições Nível 2 (Vizinhos dos Vizinhos, decaimento=0.5):")
+    L2_DECAY = 0.5
     for neighbor_vertex, w1 in L1:
-        print(f"    Exploring neighbors of Level 1 node {neighbor_vertex.id} ({neighbor_vertex.sentiment}):")
-        deg = len(neighbor_vertex.neighbors)
-        if deg == 0:
-            deg = 1
+        deg = len(neighbor_vertex.neighbors) or 1
+        norm_w1 = w1 / max_l1_weight
         has_l2 = False
         for node in neighbor_vertex.neighbors:
             l2_id = node.key
             l2_weight = node.value
-            
             if l2_id == temp_id or l2_id in L1_ids:
                 continue
-                
             l2_vertex = graph.get_vertex(l2_id)
             if l2_vertex:
-                contrib = (0.5 * w1 * l2_weight) / deg
+                contrib = L2_DECAY * norm_w1 * (l2_weight / deg)
                 scores[l2_vertex.sentiment.lower()] += contrib
                 has_l2 = True
-                print(f"      -> Neighbor ID {l2_id} ({l2_vertex.sentiment}) with edge weight {l2_weight} -> Added weight: {contrib:.4f}")
+                print(f"      -> ID {l2_id} ({l2_vertex.sentiment}) | w={l2_weight:.4f} | contrib={contrib:.5f}")
         if not has_l2:
-            print("      -> No eligible Level 2 neighbors.")
+            print(f"      -> Nó L1 {neighbor_vertex.id}: nenhum vizinho Nível 2 elegível.")
 
-    print("\n[Step 4] Final Scores Summary:")
+    # ------------------------------------------------------------------ #
+    # Passo 4: Scores finais e decisão                                    #
+    # Em caso de empate ou score zero, usa o prior de classe como fallback#
+    # ------------------------------------------------------------------ #
+    print("\n[Passo 4] Scores Finais:")
     for sent, val in scores.items():
-        print(f"  - {sent.capitalize()}: {val:.2f}")
+        print(f"  - {sent.capitalize()}: {val:.4f}")
 
-    # Final Decision
-    winning_sentiment = "neutral"
+    winning_sentiment = None
     max_score = -1.0
     is_tie = False
-    
+
     for sentiment, score in scores.items():
         if score > max_score:
             max_score = score
             winning_sentiment = sentiment
             is_tie = False
-        elif score == max_score:
+        elif score == max_score and score > 0.0:
             is_tie = True
-            
-    if is_tie:
-        print("  Result: TIE detected! Defaulting to Neutral.")
-        final_sentiment = "neutral"
+
+    if is_tie or max_score <= 0.0:
+        final_sentiment = max(class_prior, key=class_prior.get)
+        print(f"  [Empate/Zero] Usando prior de classe: { {s: f'{p:.3f}' for s, p in class_prior.items()} }")
     else:
         final_sentiment = winning_sentiment
-        
-    print(f"Final Classification Decision: {final_sentiment.upper()}")
-    
-    # Cleanup
+
+    print(f"Decisão Final de Classificação: {final_sentiment.upper()}")
+
+    # Limpeza do vértice temporário
     graph.remove_vertex(temp_id)
     print("-"*60 + "\n")
 
@@ -270,76 +316,76 @@ def interactive_trace(graph, inverted_index, text, threshold=1):
 def main():
     csv_file = 'fifa_world_cup_2022_tweets.csv'
     
-    # Check if a sentence was passed via command line arguments
+    # Verifica se uma frase foi passada via argumentos de linha de comando
     if len(sys.argv) > 1:
         if sys.argv[1] in ('-h', '--help'):
-            print("Usage:")
-            print("  python main.py                    # Runs the interactive menu")
-            print("  python main.py \"your tweet text\" # Directly runs a detailed classification trace")
+            print("Uso:")
+            print("  python main.py                   # Executa o menu interativo")
+            print("  python main.py \"texto do tweet\" # Executa trace detalhado de classificação")
             return
             
         tweet_text = " ".join(sys.argv[1:])
-        tweets = load_dataset(csv_file, limit=5000)
-        print("\n[*] Building base graph of 5000 tweets for query classification...")
+        tweets = load_dataset(csv_file, limit=10000)
+        print("\n[*] Construindo grafo base de 10000 tweets para classificação...")
         start_time = time.time()
-        graph, inverted_index = build_base_graph(tweets, threshold=1)
-        print(f"[+] Graph built in {time.time() - start_time:.2f} seconds.")
+        graph, inverted_index = build_base_graph(tweets, threshold=0.05)
+        print(f"[+] Grafo construído em {time.time() - start_time:.2f} segundos.")
         
-        interactive_trace(graph, inverted_index, tweet_text, threshold=1)
+        interactive_trace(graph, inverted_index, tweet_text, threshold=0.05)
         return
 
-    # Build a small initial graph for interactive use
+    # Carrega dataset para uso interativo
     tweets = load_dataset(csv_file, limit=10000)
     
-    print("\nOptions:")
-    print("1. Run Full System Evaluation (Train size: 4000, Test size: 1000)")
-    print("2. Run Interactive Mode (Input your own tweets)")
-    print("3. Exit")
+    print("\nOpções:")
+    print("1. Executar Avaliação Completa (Treino: 8000, Teste: 2000)")
+    print("2. Executar Modo Interativo (Digite seus próprios tweets)")
+    print("3. Sair")
     
     try:
-        choice = input("\nEnter choice (1-3): ").strip()
+        choice = input("\nEscolha (1-3): ").strip()
     except (KeyboardInterrupt, EOFError):
-        print("\nExiting.")
+        print("\nSaindo.")
         return
 
     if choice == '1':
         try:
-            thresh_str = input("Enter similarity threshold (default: 1): ").strip()
-            threshold = int(thresh_str) if thresh_str else 1
+            thresh_str = input("Digite o threshold de similaridade Jaccard-IDF (padrão: 0.05): ").strip()
+            threshold = float(thresh_str) if thresh_str else 0.05
         except ValueError:
-            print("[!] Invalid input. Using default threshold 1.")
-            threshold = 1
+            print("[!] Entrada inválida. Usando threshold padrão 0.05.")
+            threshold = 0.05
         
-        run_evaluation(tweets, train_size=4000, test_size=1000, threshold=threshold)
+        run_evaluation(tweets, train_size=8000, test_size=2000, threshold=threshold)
         
     elif choice == '2':
-        # For interactive mode, we will build a base graph of 5000 tweets to query against
-        print("\n[*] Building base graph of 5000 tweets for interactive queries...")
+        # Para modo interativo, constrói grafo base de 10000 tweets
+        print("\n[*] Construindo grafo base de 10000 tweets para consultas interativas...")
         start_time = time.time()
-        graph, inverted_index = build_base_graph(tweets[:5000], threshold=1)
-        print(f"[+] Graph built in {time.time() - start_time:.2f} seconds.")
-        
+        graph, inverted_index = build_base_graph(tweets[:10000], threshold=0.05)
+        print(f"[+] Grafo construído em {time.time() - start_time:.2f} segundos.")
+
         try:
-            thresh_str = input("Enter query similarity threshold (default: 1): ").strip()
-            threshold = int(thresh_str) if thresh_str else 1
+            thresh_str = input("Digite o threshold de similaridade Jaccard-IDF (padrão: 0.05): ").strip()
+            threshold = float(thresh_str) if thresh_str else 0.05
         except ValueError:
-            print("[!] Invalid input. Using default threshold 1.")
-            threshold = 1
+            print("[!] Entrada inválida. Usando threshold padrão 0.05.")
+            threshold = 0.05
             
-        print("\nEntering interactive mode. Type 'exit' or press Ctrl+C to stop.")
+        print("\nEntrando no modo interativo. Digite 'exit' ou Ctrl+C para sair.")
         while True:
             try:
-                tweet_text = input("\nEnter tweet text to classify: ").strip()
+                tweet_text = input("\nDigite o texto do tweet para classificar: ").strip()
                 if not tweet_text:
                     continue
                 if tweet_text.lower() == 'exit':
                     break
                 interactive_trace(graph, inverted_index, tweet_text, threshold=threshold)
             except (KeyboardInterrupt, EOFError):
-                print("\nExiting interactive mode.")
+                print("\nSaindo do modo interativo.")
                 break
     else:
-        print("Exiting.")
+        print("Saindo.")
 
 if __name__ == '__main__':
     main()
