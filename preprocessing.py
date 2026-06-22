@@ -24,3 +24,16 @@ def preprocess_tweet(text):
     doc = nlp(text)
 
     useful_words = []
+    for token in doc:
+        # Filter out stopwords, punctuation, and whitespace tokens
+        if token.is_stop or token.is_punct or token.is_space:
+            continue
+        
+        # Extract the lemma, convert to lowercase, and strip whitespace
+        lemma = token.lemma_.strip().lower()
+        
+        # Only add non-empty lemmas that are not domain-specific stopwords
+        if lemma and lemma not in DOMAIN_STOPWORDS:
+            useful_words.append(lemma)
+            
+    return useful_words
