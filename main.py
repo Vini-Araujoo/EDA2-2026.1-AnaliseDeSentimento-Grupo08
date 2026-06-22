@@ -1,7 +1,8 @@
 import csv
 import sys
 import time
-from opinion_mining import build_base_graph, classify_tweet
+from opinion_mining import build_base_graph, classify_tweet, preprocess_tweet
+from data_structures import Vertex
 
 def load_dataset(file_path, limit=6000):
     """
@@ -130,3 +131,137 @@ def run_evaluation(tweets, train_size=4000, test_size=1000, threshold=1):
     for cls, scores in metrics.items():
         print(f"{cls:<12} | {scores['precision']:<10.4f} | {scores['recall']:<10.4f} | {scores['f1-score']:<10.4f} | {scores['support']:<8}")
     print("="*50 + "\n")
+
+
+def interactive_trace(graph, inverted_index, text, threshold=1):
+    """
+    Runs classification on a single input text and displays the trace details.
+    """
+    print("\n" + "-"*60)
+    print(" INTERACTIVE CLASSIFICATION TRACE")
+    print("-"*60)
+    
+    print(f"Input text: \"{text}\"")
+    
+    # Preprocessing
+    raw_words = preprocess_tweet(text)
+    corpus_stopwords = getattr(graph, 'corpus_stopwords', {})
+    words = [w for w in raw_words if w not in corpus_stopwords]
+    print(f"Extracted Useful Words: {words}")
+    
+    if not words:
+        print("[!] No useful words found (filtered as stopwords/punctuation).")
+        print("Final Classification: NEUTRAL (default)")
+        print("-"*60 + "\n")
+        return
+
+    # Candidate Search
+    print("\n[Step 1] Querying Inverted Index...")
+    candidate_counts = {}
+    for word in words:
+        postings = inverted_index.get(word)
+        if postings:
+            posting_ids = [node.key for node in postings]
+            print(f"  Word '{word}' appears in: {posting_ids[:10]}... (Total: {len(posting_ids)})")
+            for node in postings:
+                cand_id = node.key
+                candidate_counts[cand_id] = candidate_counts.get(cand_id, 0) + 1
+        else:
+            print(f"  Word '{word}' not found in index.")
+
+    # Edge creation
+    print("\n[Step 2] Calculating Intersection Weights (Threshold >= {})...".format(threshold))
+    temp_id = "__temp_query_tweet__"
+    temp_vertex = Vertex(temp_id, "unknown", words)
+    graph.add_vertex(temp_vertex)
+    
+    edges_added = []
+    for cand_id, intersection in candidate_counts.items():
+        if intersection >= threshold:
+            graph.add_edge(temp_id, cand_id, intersection)
+            cand_vertex = graph.get_vertex(cand_id)
+            edges_added.append((cand_id, cand_vertex.sentiment, cand_vertex.useful_words, intersection))
+            
+    if not edges_added:
+        print("  [!] No candidates met the similarity threshold.")
+        print("Final Classification: NEUTRAL (default)")
+        graph.remove_vertex(temp_id)
+        print("-"*60 + "\n")
+        return
+        
+    print(f"  Connected to {len(edges_added)} direct neighbors in the Base Graph:")
+    for cid, sent, useful, wt in edges_added[:10]:
+        print(f"    - Base Tweet ID {cid} ({sent}, words: {useful}) -> Weight: {wt}")
+    if len(edges_added) > 10:
+        print(f"    - ... and {len(edges_added) - 10} more.")
+
+    # Level-2 BFS scores calculation
+    print("\n[Step 3] Propagating Scores (Level-2 BFS)...")
+    scores = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
+    
+    # Level 1 neighbors
+    L1 = []
+    L1_ids = {}
+    print("  Level 1 Contributions (Direct Neighbors):")
+    for node in temp_vertex.neighbors:
+        neighbor_id = node.key
+        weight = node.value
+        neighbor_vertex = graph.get_vertex(neighbor_id)
+        if neighbor_vertex:
+            L1.append((neighbor_vertex, weight))
+            L1_ids[neighbor_id] = True
+            scores[neighbor_vertex.sentiment.lower()] += weight
+            print(f"    Neighbor ID {neighbor_id} ({neighbor_vertex.sentiment}) -> Added weight: {weight}")
+
+    # Level 2 neighbors
+    print("\n  Level 2 Contributions (Neighbors of Neighbors, 0.5x penalty):")
+    for neighbor_vertex, w1 in L1:
+        print(f"    Exploring neighbors of Level 1 node {neighbor_vertex.id} ({neighbor_vertex.sentiment}):")
+        deg = len(neighbor_vertex.neighbors)
+        if deg == 0:
+            deg = 1
+        has_l2 = False
+        for node in neighbor_vertex.neighbors:
+            l2_id = node.key
+            l2_weight = node.value
+            
+            if l2_id == temp_id or l2_id in L1_ids:
+                continue
+                
+            l2_vertex = graph.get_vertex(l2_id)
+            if l2_vertex:
+                contrib = (0.5 * w1 * l2_weight) / deg
+                scores[l2_vertex.sentiment.lower()] += contrib
+                has_l2 = True
+                print(f"      -> Neighbor ID {l2_id} ({l2_vertex.sentiment}) with edge weight {l2_weight} -> Added weight: {contrib:.4f}")
+        if not has_l2:
+            print("      -> No eligible Level 2 neighbors.")
+
+    print("\n[Step 4] Final Scores Summary:")
+    for sent, val in scores.items():
+        print(f"  - {sent.capitalize()}: {val:.2f}")
+
+    # Final Decision
+    winning_sentiment = "neutral"
+    max_score = -1.0
+    is_tie = False
+    
+    for sentiment, score in scores.items():
+        if score > max_score:
+            max_score = score
+            winning_sentiment = sentiment
+            is_tie = False
+        elif score == max_score:
+            is_tie = True
+            
+    if is_tie:
+        print("  Result: TIE detected! Defaulting to Neutral.")
+        final_sentiment = "neutral"
+    else:
+        final_sentiment = winning_sentiment
+        
+    print(f"Final Classification Decision: {final_sentiment.upper()}")
+    
+    # Cleanup
+    graph.remove_vertex(temp_id)
+    print("-"*60 + "\n")
