@@ -9,3 +9,18 @@ DOMAIN_STOPWORDS = {
     'fifaworldcup', 'qatar2022', 'football', 'fifa', 'match', 
     '2022', 'amp', 'qatarworldcup2022'
 }
+
+def preprocess_tweet(text):
+    """
+    Cleans a tweet's text using spaCy.
+    Performs tokenization, stopword and punctuation removal, and lemmatization.
+    Also filters out domain-specific stopwords.
+    Returns a list of lowercased lemmas of useful words.
+    """
+    if not isinstance(text, str):
+        return []
+
+    # Run the spaCy pipeline on the text
+    doc = nlp(text)
+
+    useful_words = []
