@@ -168,70 +168,116 @@ def build_base_graph(tweets_data, threshold=0.05):
 
     return graph, inverted_index
 
-def classify_tweet(graph, inverted_index, text, threshold=1):
-    """
-    Classifies a new tweet into positive, negative, or neutral sentiment.
 
-    Parameters:
-    - graph: Base Graph containing the immutable dataset.
-    - inverted_index: Inverted index mapping words to tweet IDs.
-    - text: raw text of the new tweet.
-    - threshold: minimum number of shared words to connect the new tweet to base tweets.
-
-    Returns:
-    - str: 'positive', 'negative', or 'neutral' (default on tie or no matches).
-    """
+# ------------------------------------------------------------------ #
+# Função classify_tweet                                               #
+# Classifica um novo tweet como positivo, negativo ou neutro.        #
+#                                                                     #
+# Melhorias:                                                          #
+# - Pontuação usa Jaccard-IDF (mesma fórmula do grafo).              #
+# - Propagação L2 normalizada pelo grau L1 e peso máximo L1.        #
+# - Empates e sem vizinhos usam prior de classe como fallback.       #
+#                                                                     #
+# Parâmetros:                                                         #
+# - graph: Grafo Base construído por build_base_graph().             #
+# - inverted_index: Índice invertido (palavras -> IDs de tweets).    #
+# - text: texto bruto do novo tweet.                                  #
+# - threshold: Jaccard-IDF mínimo para conectar ao grafo base.       #
+#                                                                     #
+# Retorna:                                                            #
+# - str: 'positive', 'negative' ou 'neutral'.                        #
+# ------------------------------------------------------------------ #
+def classify_tweet(graph, inverted_index, text, threshold=0.05):
+    # ------------------------------------------------------------------ #
+    # Passo 1: Pré-processar o texto de entrada                          #
+    # ------------------------------------------------------------------ #
     raw_words = preprocess_tweet(text)
-
     corpus_stopwords = getattr(graph, 'corpus_stopwords', {})
+    idf_table = getattr(graph, 'idf_table', {})
+    class_prior = getattr(graph, 'class_prior',
+                          {'positive': 0.333, 'negative': 0.333, 'neutral': 0.334})
+
     useful_words = [w for w in raw_words if w not in corpus_stopwords]
 
     if not useful_words:
-        return "neutral"
+        return _prior_winner(class_prior)
 
+    query_set = frozenset(useful_words)
     new_tweet_id = "__temp_query_tweet__"
-    candidate_counts = {}
-    for word in useful_words:
+
+    # ------------------------------------------------------------------ #
+    # Passo 2: Busca de candidatos via índice invertido                  #
+    # ------------------------------------------------------------------ #
+    candidate_set = set()
+    for word in query_set:
         postings = inverted_index.get(word)
         if postings:
             for node in postings:
-                cand_id = node.key
-                candidate_counts[cand_id] = candidate_counts.get(cand_id, 0) + 1
+                candidate_set.add(node.key)
 
-    temp_vertex = Vertex(new_tweet_id, "unknown", useful_words)
+    # ------------------------------------------------------------------ #
+    # Passo 3: Criar vértice temporário e calcular arestas Jaccard-IDF   #
+    # ------------------------------------------------------------------ #
+    temp_vertex = Vertex(new_tweet_id, "unknown", list(useful_words))
     graph.add_vertex(temp_vertex)
 
     has_edges = False
-    for cand_id, intersection in candidate_counts.items():
-        if intersection >= threshold:
-            graph.add_edge(new_tweet_id, cand_id, intersection)
+    for cand_id in candidate_set:
+        cand_vertex = graph.get_vertex(cand_id)
+        if not cand_vertex:
+            continue
+
+        words_b = frozenset(cand_vertex.useful_words)
+        intersection = query_set & words_b
+        if not intersection:
+            continue
+
+        union = query_set | words_b
+        idf_intersection = sum(idf_table.get(w, 1.0) for w in intersection)
+        idf_union = sum(idf_table.get(w, 1.0) for w in union)
+        jaccard_idf = idf_intersection / idf_union if idf_union > 0 else 0.0
+
+        if jaccard_idf >= threshold:
+            graph.add_edge(new_tweet_id, cand_id, jaccard_idf)
             has_edges = True
 
     if not has_edges:
         graph.remove_vertex(new_tweet_id)
-        return "neutral"
+        return _prior_winner(class_prior)
 
+    # ------------------------------------------------------------------ #
+    # Passo 4: Propagação Nível 1 (vizinhos diretos)                     #
+    # Cada vizinho direto contribui com seu peso Jaccard-IDF ao score    #
+    # do sentimento correspondente.                                       #
+    # ------------------------------------------------------------------ #
     scores = {"positive": 0.0, "negative": 0.0, "neutral": 0.0}
-
     L1 = []
-    L1_ids = {}
+    L1_ids = set()
+
     for node in temp_vertex.neighbors:
         neighbor_id = node.key
-        weight = node.value
+        weight = node.value       # Jaccard-IDF ponderado no intervalo [0, 1]
         neighbor_vertex = graph.get_vertex(neighbor_id)
         if neighbor_vertex:
+            sentiment = neighbor_vertex.sentiment.lower()
+            if sentiment in scores:
+                scores[sentiment] += weight
             L1.append((neighbor_vertex, weight))
-            L1_ids[neighbor_id] = True
+            L1_ids.add(neighbor_id)
 
-    for neighbor_vertex, weight in L1:
-        sentiment = neighbor_vertex.sentiment.lower()
-        if sentiment in scores:
-            scores[sentiment] += weight
+    # Âncora de normalização para L2
+    max_l1_weight = max((w for _, w in L1), default=1.0) or 1.0
 
+    # ------------------------------------------------------------------ #
+    # Passo 5: Propagação Nível 2 (vizinhos dos vizinhos L1)             #
+    # contrib = DECAIMENTO * (w_query_l1 / max_l1) * (w_l1_l2 / grau)   #
+    # O decaimento de 0.5 reduz a influência dos vizinhos indiretos.     #
+    # ------------------------------------------------------------------ #
+    L2_DECAY = 0.5
     for neighbor_vertex, w1 in L1:
-        deg = len(neighbor_vertex.neighbors)
-        if deg == 0:
-            deg = 1
+        deg = len(neighbor_vertex.neighbors) or 1
+        norm_w1 = w1 / max_l1_weight
+
         for node in neighbor_vertex.neighbors:
             l2_id = node.key
             l2_weight = node.value
@@ -243,9 +289,16 @@ def classify_tweet(graph, inverted_index, text, threshold=1):
             if l2_vertex:
                 sentiment = l2_vertex.sentiment.lower()
                 if sentiment in scores:
-                    scores[sentiment] += (0.5 * w1 * l2_weight) / deg
+                    scores[sentiment] += L2_DECAY * norm_w1 * (l2_weight / deg)
 
-    winning_sentiment = "neutral"
+    # ------------------------------------------------------------------ #
+    # Passo 6: Decisão final                                              #
+    # Se houver empate ou pontuação zero, usa o prior de classe.         #
+    # Caso contrário, retorna o sentimento com maior pontuação.          #
+    # ------------------------------------------------------------------ #
+    graph.remove_vertex(new_tweet_id)
+
+    winning_sentiment = None
     max_score = -1.0
     is_tie = False
 
@@ -254,14 +307,24 @@ def classify_tweet(graph, inverted_index, text, threshold=1):
             max_score = score
             winning_sentiment = sentiment
             is_tie = False
-        elif score == max_score:
+        elif score == max_score and score > 0.0:
             is_tie = True
 
-    if is_tie:
-        final_sentiment = "neutral"
-    else:
-        final_sentiment = winning_sentiment
+    if is_tie or max_score <= 0.0:
+        return _prior_winner(class_prior)
 
-    graph.remove_vertex(new_tweet_id)
+    return winning_sentiment
 
-    return final_sentiment
+
+# ------------------------------------------------------------------ #
+# Função _prior_winner                                                #
+# Retorna a classe de sentimento com a maior probabilidade prior.    #
+# ------------------------------------------------------------------ #
+def _prior_winner(class_prior):
+    best = 'neutral'
+    best_p = -1.0
+    for sent, p in class_prior.items():
+        if p > best_p:
+            best_p = p
+            best = sent
+    return best
