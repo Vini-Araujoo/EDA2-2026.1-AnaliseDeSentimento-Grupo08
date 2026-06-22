@@ -83,3 +83,55 @@ class HashTable:
         # Resize if load factor is > 0.75
         if self.size / self.capacity > 0.75:
             self._resize()
+
+
+    def get(self, key):
+        """Retrieve the value associated with a key, or None if not found."""
+        idx = self._hash(key)
+        bucket = self.buckets[idx]
+        if bucket is None:
+            return None
+        for node in bucket:
+            if node.key == key:
+                return node.value
+        return None
+
+    def contains(self, key):
+        """Check if a key is present in the hash table."""
+        return self.get(key) is not None
+
+    def delete(self, key):
+        """Remove a key-value pair from the hash table. Returns True if removed, else False."""
+        idx = self._hash(key)
+        bucket = self.buckets[idx]
+        if bucket is None:
+            return False
+        
+        removed = bucket.remove(key)
+        if removed:
+            self.size -= 1
+            # Optional: clean up empty bucket reference
+            if len(bucket) == 0:
+                self.buckets[idx] = None
+        return removed
+
+    def _resize(self):
+        """Double the capacity and rehash all elements."""
+        old_buckets = self.buckets
+        self.capacity *= 2
+        self.buckets = [None] * self.capacity
+        self.size = 0  # put will increment self.size
+
+        for bucket in old_buckets:
+            if bucket is not None:
+                for node in bucket:
+                    self.put(node.key, node.value)
+
+    def keys(self):
+        """Return a python list of all keys in the hash table."""
+        all_keys = []
+        for bucket in self.buckets:
+            if bucket is not None:
+                for node in bucket:
+                    all_keys.append(node.key)
+        return all_keys
