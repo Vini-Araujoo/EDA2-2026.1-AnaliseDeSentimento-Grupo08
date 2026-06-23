@@ -150,7 +150,9 @@ Isso construirá o grafo base e imprimirá um rastreamento detalhado (*Trace*) c
 ### 1. Construção do Grafo com Métrica Jaccard-IDF
 Em vez de uma similaridade Jaccard comum, a similaridade entre dois tweets $A$ e $B$ é ponderada pelo **IDF (Inverse Document Frequency)** de suas palavras úteis compartilhadas:
 
-$$\text{Similaridade}(A, B) = \frac{\sum_{w \in A \cap B} \text{IDF}(w)}{\sum_{w \in A \cup B} \text{IDF}(w)}$$
+$$
+\text{Similaridade}(A, B) = \frac{\sum_{w \in A \cap B} \text{IDF}(w)}{\sum_{w \in A \cup B} \text{IDF}(w)}
+$$
 
 Isso assegura que palavras raras e com maior carga semântica influenciem mais a conexão entre os tweets do que palavras comuns que escaparam do filtro de stopwords.
 
@@ -158,7 +160,11 @@ Isso assegura que palavras raras e com maior carga semântica influenciem mais a
 A classificação de um novo tweet é feita através de propagação de sentimento no grafo base em dois níveis:
 - **Nível 1 (Vizinhos Diretos):** Contribuem diretamente com o peso Jaccard-IDF para a classe de sentimento do vizinho.
 - **Nível 2 (Vizinhos Indiretos):** A contribuição é calculada com atenuação e normalização pelo grau do vizinho direto:
-  $$\text{Contribuição}_{L2} = 0.5 \times \left(\frac{w_1}{\max w_1}\right) \times \left(\frac{w_{1 \to 2}}{\text{grau}(v_{L1})}\right)$$
+
+$$
+\text{Contribuição}_{L2} = 0.5 \times \left(\frac{w_1}{\max(w_1)}\right) \times \left(\frac{w_{1 \to 2}}{\text{grau}(v_{L1})}\right)
+$$
+
 - **Fallback (Prior de Classe):** Em caso de empate ou ausência de conexões com o grafo base, o classificador utiliza a probabilidade a priori de cada classe extraída no treino.
 
 ---
